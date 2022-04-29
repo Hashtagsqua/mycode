@@ -1,0 +1,16 @@
+"""
+A mathematical problem generator, theoretically usable
+outside the game itself and therefore in an extra file.
+"""
+
+import random
+
+def make_problem(level):
+    # [Random Number between 1 and 11]
+    task = str(random.randint(1, 11))
+    for i in range(level):
+        # Append [Random Operation] [Random Number between 1 and 11]
+        task += " "  + random.choice(["*", "+", "-"]) + " " + str(random.randint(1, 11))
+
+    # Return the task itself and its solution
+    return task, eval(task)
