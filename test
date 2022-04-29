@@ -1,0 +1,274 @@
+Simple math RPG game. You play the role of a guy that has to survive.
+
+You play against a combination of time and tasks: you have a certain
+amount of food that passively decreases when you don't perform some
+mathematical tasks correctly.
+
+There are robots. Approach them and you will get asked a random mathematical
+question. Solve it and you will get extra food. If you give a wrong answer,
+300 of food will be subtracted from your storage.
+
+Once you have less than 0 food, you're dead. The more questions you answer,
+the better your score will be.
+
+The complexity of the mathematical questions will increase every time you
+solve a question: new robots will ask you harder questions.
+
+
+
+Images from:
+  - http://opengameart.org/users/grumpydiamond
+  - https://opengameart.org/content/pixel-background-0
+  - https://opengameart.org/content/robot-4
+
+Music from:
+  - https://opengameart.org/content/menu-music
+
+"""
+
+# 3rd Party Imports
+from tkinter import Tk
+from tkinter import simpledialog, messagebox
+import pygame
+
+# Local Imports
+import config
+import levels
+
+# Standard Library Imports
+import random
+import sys
+import os
+
+# Global Constants
+BLACK = (0, 0, 0) # RGB value for black
+WHITE = (255, 255, 255) # RGB value for white
+
+# Invisible window, needed only for tkinter's simpledialog to work
+root = Tk()
+root.withdraw()
+
+class Player(pygame.sprite.Sprite):
+    """
+    Class representing the main player
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.movex = 0
+        self.movey = 0
+        self.frame = 0
+        self.images = []
+        self.is_asked = False
+        self.food = 1000
+        self.level = 1
+
+        # Load the walking animation (player1.png to player4.png)
+        for i in range(1,5):
+            img = pygame.image.load(f"player{i}.png").convert()
+            img = pygame.transform.scale(img, (160, 160))
+
+            # Make the white image background transparent
+            img.convert_alpha()
+            img.set_colorkey(BLACK)
+
+            self.images.append(img)
+            self.image = self.images[0]
+            self.rect = self.image.get_rect()
+
+    def control(self, x, y):
+        """
+        Control player movement
+        """
+        self.movex += x
+        self.movey += y
+
+    def update(self):
+        """
+        Update sprite position
+        """
+
+        # Update the food storage
+        self.food -= random.randint(1, 6)
+
+        # Actually move this player
+        self.rect.x = self.rect.x + self.movex
+        self.rect.y = self.rect.y + self.movey
+
+        # Prevent going over the horizontal edges
+        if self.rect.x > world.get_rect().width - 160: # minus the player width (160 pixels)
+            self.rect.x = world.get_rect().width - 160 # minus the player width (160 pixels)
+        elif self.rect.x < 0:
+            self.rect.x = 0
+
+        # Prevent going over the vertical edges
+        if self.rect.y > world.get_rect().height - 160:
+            self.rect.y = world.get_rect().height - 160
+        elif self.rect.y < 0:
+            self.rect.y = 0
+
+        # Moving to the left
+        if self.movex < 0:
+            self.frame += 1
+            if self.frame > 3*len(self.images):
+                self.frame = 0
+            self.image = pygame.transform.flip(self.images[self.frame % len(self.images)], True, False) # We need to flip the image direction
+
+        # Moving to the right
+        if self.movex > 0:
+            self.frame += 1
+            if self.frame > 3*len(self.images):
+                self.frame = 0
+            self.image = self.images[self.frame % len(self.images)]
+
+class Robot(pygame.sprite.Sprite):
+    """
+    Class representing the bad guys
+    """
+
+    def __init__(self, x, y, question, solution):
+        super().__init__()
+        self.frame = 0
+        self.images = []
+        self.question = question
+        self.solution = solution
+
+        # Load the walking animation (player1.png to player4.png)
+        for i in range(2):
+            img = pygame.image.load(f"robot{i}.png").convert()
+            img = pygame.transform.scale(img, (80, 80))
+
+            # Make the white image background transparent
+            img.convert_alpha()
+            img.set_colorkey(WHITE)
+
+            self.images.append(img)
+            self.image = self.images[0]
+            self.rect = self.image.get_rect()
+        
+        self.rect.x = x
+        self.rect.y = y
+    
+    def ask(self):
+        answer = simpledialog.askinteger(title="Solve this!", prompt=f"How much is {self.question}?\n\nIf you give a wrong answer, you lose 300 food!")
+        if answer == self.solution:
+            player.food += random.randint(200, 300)
+            pygame.mixer.Sound.play(win)
+            generate_bot(int(player.level))
+        else:
+            player.food -= 300
+            pygame.mixer.Sound.play(lose)
+        player_list.remove(self)
+        player.level += random.choice([config.level_speed, config.level_speed * 2])
+
+    def update(self):
+        """
+        Update sprite image
+        """
+
+        self.frame += 0.1
+        if self.frame > 3*len(self.images):
+            self.frame = 0
+        self.image = self.images[int(self.frame % len(self.images))]
+
+        if player.rect.colliderect(self.rect):
+            self.ask()
+
+def generate_bot(level):
+    question, solution = levels.make_problem(level)
+
+    # Position the bot at a random position on the screen while it may not overflow it.
+    # Therefore, subtract its own size from the screen dimensions.
+    position = random.randint(0, world.get_rect().width - 80), random.randint(0, world.get_rect().height - 80)
+
+    # When the bot collides with anyone on the screen, generate another random position and try again
+    # We don't want things to overlap
+
+    while pygame.Rect(position, (80, 80)).collidelist([item.rect for item in player_list]) != -1:
+        position = random.randint(0, world.get_rect().width - 80), random.randint(0, world.get_rect().height - 80)
+    
+    bot = Robot(position[0], position[1], question, solution)
+    player_list.add(bot)
+
+world = pygame.display.set_mode([960, 720])
+backdrop = pygame.image.load("background.jpg")
+backdropbox = world.get_rect()
+clock = pygame.time.Clock() # Needed for accurately timing the frames per second
+pygame.init()
+pygame.font.init()
+
+font = pygame.font.SysFont("Arial", 30)
+win = pygame.mixer.Sound("win.wav")
+lose = pygame.mixer.Sound("fail.wav")
+end = pygame.mixer.Sound("end.ogg")
+pygame.mixer.music.load("music.wav")
+pygame.mixer.music.play(-1) # Loop background music
+
+player_list = pygame.sprite.Group()
+
+player = Player()  # spawn player
+player.rect.x = 0  # go to x = 0
+player.rect.y = 0  # go to y = 0
+player_list.add(player)
+
+for i in range(4): generate_bot(player.level)
+
+# Game Main Loop
+main = True
+while main:
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            pygame.quit()
+            try:
+                sys.exit()
+            finally:
+                main = False
+        
+        if event.type == pygame.KEYDOWN:
+            if event.key == ord("q"):
+                pygame.quit()
+                try:
+                    sys.exit()
+                finally:
+                    main = False
+            if event.key == pygame.K_LEFT:
+                player.control(-config.steps, 0)
+            if event.key == pygame.K_RIGHT:
+                player.control(config.steps, 0)
+            if event.key == pygame.K_UP:
+                player.control(0, -config.steps)
+            if event.key == pygame.K_DOWN:
+                player.control(0, config.steps)
+
+        if event.type == pygame.KEYUP:
+            if event.key == pygame.K_LEFT:
+                player.control(config.steps, 0)
+            if event.key == pygame.K_RIGHT:
+                player.control(-config.steps, 0)
+            if event.key == pygame.K_UP:
+                player.control(0, config.steps)
+            if event.key == pygame.K_DOWN:
+                player.control(0, -config.steps)
+
+    world.blit(backdrop, backdropbox)
+
+    for item in player_list:
+        item.update()
+    player_list.draw(world)
+
+
+    score_text = font.render(f"Score: {int((player.level * 100) if player.level > 0 else 0)}", False, WHITE)
+    food_left = font.render(f"Food Left: {player.food}", False, WHITE)
+    world.blit(score_text, (0, 0))
+    world.blit(food_left, (0, 30))
+
+    pygame.display.flip()
+    clock.tick(config.fps)
+
+    if player.food < 0:
+        pygame.mixer.music.stop()
+        pygame.mixer.Sound.play(end)
+        messagebox.showinfo("That's it", f"The game ended! You reached a score of:\n{int(player.level * 100)}")
+        pygame.quit()
+        main = False
+        exit()
