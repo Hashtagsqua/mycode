@@ -1,0 +1,12 @@
+"""
+Game configuration file
+"""
+
+# Walking speed
+steps = 20
+
+# Application redrawing speed (affects the walking speed)
+fps = 20
+
+# Level Increase Speed
+level_speed = 0.2
